@@ -90,6 +90,7 @@ export async function criarReserva(dados: {
         checkIn: finalCheckIn,
         checkOut: finalCheckOut,
         totalPrice,
+        // A linha "petsCount" foi removida daqui para não dar erro na Vercel!
         userId: user.id,
         petId: pet.id,
         status: 'PENDENTE',
