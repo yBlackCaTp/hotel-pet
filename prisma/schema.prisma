@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Tabela do Tutor (Cliente)
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  phone     String?
+  createdAt DateTime @default(now())
+  
+  pets      Pet[]
+  bookings  Booking[]
+}
+
+// Tabela do Pet
+model Pet {
+  id                String   @id @default(cuid())
+  name              String
+  breed             String
+  size              String   // ex: Pequeno, Medio, Grande
+  isCastrated       Boolean  
+  hasBehaviorIssues Boolean  
+  healthNotes       String?  
+  
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  bookings          Booking[]
+}
+
+// Tabela da Reserva 
+model Booking {
+  id            String   @id @default(cuid())
+  checkIn       DateTime
+  checkOut      DateTime
+  totalPrice    Float    
+  status        String   @default("PENDENTE") 
+  
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  petId         String
+  pet           Pet      @relation(fields: [petId], references: [id])
+  
+  createdAt     DateTime @default(now())
+}
