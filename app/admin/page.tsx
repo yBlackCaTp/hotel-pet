@@ -52,7 +52,7 @@ export default async function AdminPanel() {
                     </td>
                   </tr>
                 ) : (
-                  reservas.map((reserva) => (
+                  reservas.map((reserva: any) => (
                     <tr key={reserva.id} className="hover:bg-gray-50 transition-colors">
                       {/* Dados do Tutor */}
                       <td className="px-6 py-4">
