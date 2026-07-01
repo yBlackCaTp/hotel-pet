@@ -8,7 +8,6 @@ const FERIADOS = [
   '01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '12-25'
 ]
 
-// Motor de Preços atualizado para aceitar a quantidade de pets
 async function calcularPrecoTotal(checkInStr: string, checkOutStr: string, petsCount: number): Promise<number> {
   const dataEntrada = new Date(checkInStr + 'T00:00:00')
   const dataSaida = new Date(checkOutStr + 'T00:00:00')
@@ -38,7 +37,6 @@ async function calcularPrecoTotal(checkInStr: string, checkOutStr: string, petsC
     dataAtual.setDate(dataAtual.getDate() + 1)
   }
 
-  // Multiplica o total calculado pela quantidade de pets
   return precoTotal * petsCount
 }
 
@@ -54,16 +52,15 @@ export async function obterPrecoPreview(checkInDate: string, checkOutDate: strin
 export async function criarReserva(dados: {
   name: string
   email: string
-  petName: string
-  size: string
-  petsCount: number
+  pets: { name: string; size: string }[]
   checkInDate: string
   checkInTime: string
   checkOutDate: string
   checkOutTime: string
 }) {
   try {
-    const totalPrice = await calcularPrecoTotal(dados.checkInDate, dados.checkOutDate, dados.petsCount)
+    const petsCount = dados.pets.length
+    const totalPrice = await calcularPrecoTotal(dados.checkInDate, dados.checkOutDate, petsCount)
 
     const user = await prisma.user.upsert({
       where: { email: dados.email },
@@ -71,11 +68,14 @@ export async function criarReserva(dados: {
       create: { name: dados.name, email: dados.email },
     })
 
+    const nomesPetsCombinados = dados.pets.map(p => p.name).join(' & ')
+    const portesPetsCombinados = dados.pets.map(p => p.size).join(', ')
+
     const pet = await prisma.pet.create({
       data: {
-        name: dados.petName,
-        breed: 'Ignorado no MVP',
-        size: dados.size,
+        name: nomesPetsCombinados,
+        breed: petsCount > 1 ? 'Múltiplos' : 'Ignorado no MVP',
+        size: portesPetsCombinados,
         isCastrated: true,
         hasBehaviorIssues: false,
         userId: user.id,
@@ -90,14 +90,13 @@ export async function criarReserva(dados: {
         checkIn: finalCheckIn,
         checkOut: finalCheckOut,
         totalPrice,
-        petsCount: dados.petsCount, // Salvando a quantidade no banco
         userId: user.id,
         petId: pet.id,
         status: 'PENDENTE',
       },
     })
 
-    return { success: true, bookingId: booking.id, price: totalPrice }
+    return { success: true, bookingId: booking.id, price: totalPrice, petName: nomesPetsCombinados }
   } catch (error) {
     console.error(error)
     return { success: false, error: 'Erro ao salvar no banco de dados.' }
