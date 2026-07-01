@@ -1,85 +1,96 @@
 // app/actions.ts
 'use server'
 
+import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/prisma'
 
-// Lista simplificada de feriados fixos (formato: MM-DD) para o cálculo automático
 const FERIADOS = [
-  '01-01', // Ano Novo
-  '04-21', // Tiradentes
-  '05-01', // Dia do Trabalho
-  '09-07', // Independência
-  '10-12', // Nossa Senhora Aparecida
-  '11-02', // Finados
-  '11-15', // Proclamação da República
-  '12-25', // Natal
+  '01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '12-25'
 ]
 
-// Função para calcular o valor total das diárias
-function calcularPrecoTotal(checkInStr: string, checkOutStr: string): number {
+// Motor de Preços atualizado para aceitar a quantidade de pets
+async function calcularPrecoTotal(checkInStr: string, checkOutStr: string, petsCount: number): Promise<number> {
   const dataEntrada = new Date(checkInStr + 'T00:00:00')
   const dataSaida = new Date(checkOutStr + 'T00:00:00')
   
+  const regrasManuais = await prisma.pricingRule.findMany()
+
   let precoTotal = 0
   let dataAtual = new Date(dataEntrada)
 
-  // Percorre dia a dia da estadia (calculando por diária/noite)
   while (dataAtual < dataSaida) {
     const mes = String(dataAtual.getMonth() + 1).padStart(2, '0')
     const dia = String(dataAtual.getDate()).padStart(2, '0')
     const dataFormatada = `${mes}-${dia}`
 
-    // Se o dia atual for feriado, cobra 80. Se não, cobra 60.
-    if (FERIADOS.includes(dataFormatada)) {
+    const regraSuprema = regrasManuais.find(regra => 
+      dataAtual >= regra.startDate && dataAtual <= regra.endDate
+    )
+
+    if (regraSuprema) {
+      precoTotal += regraSuprema.price
+    } else if (FERIADOS.includes(dataFormatada)) {
       precoTotal += 80
     } else {
       precoTotal += 60
     }
 
-    // Avança para o próximo dia
     dataAtual.setDate(dataAtual.getDate() + 1)
   }
 
-  return precoTotal
+  // Multiplica o total calculado pela quantidade de pets
+  return precoTotal * petsCount
 }
 
-export async function criarReserva(formData: FormData) {
-  const name = formData.get('name') as string
-  const email = formData.get('email') as string
-  const petName = formData.get('petName') as string
-  const size = formData.get('size') as string
-  const checkIn = formData.get('checkIn') as string
-  const checkOut = formData.get('checkOut') as string
-
-  // 1. Calcular o preço final com base nas datas
-  const totalPrice = calcularPrecoTotal(checkIn, checkOut)
-
+export async function obterPrecoPreview(checkInDate: string, checkOutDate: string, petsCount: number) {
   try {
-    // 2. Procura o utilizador pelo e-mail ou cria um novo se não existir
+    const price = await calcularPrecoTotal(checkInDate, checkOutDate, petsCount)
+    return { success: true, price }
+  } catch (error) {
+    return { success: false, price: 0 }
+  }
+}
+
+export async function criarReserva(dados: {
+  name: string
+  email: string
+  petName: string
+  size: string
+  petsCount: number
+  checkInDate: string
+  checkInTime: string
+  checkOutDate: string
+  checkOutTime: string
+}) {
+  try {
+    const totalPrice = await calcularPrecoTotal(dados.checkInDate, dados.checkOutDate, dados.petsCount)
+
     const user = await prisma.user.upsert({
-      where: { email },
-      update: { name },
-      create: { name, email },
+      where: { email: dados.email },
+      update: { name: dados.name },
+      create: { name: dados.name, email: dados.email },
     })
 
-    // 3. Cria o perfil do Pet vinculado a esse utilizador
     const pet = await prisma.pet.create({
       data: {
-        name: petName,
-        breed: 'Ignorado no MVP', // Campo padrão apenas para preencher o banco
-        size,
-        isCastrated: true,       // Padrão para o formulário inicial
+        name: dados.petName,
+        breed: 'Ignorado no MVP',
+        size: dados.size,
+        isCastrated: true,
         hasBehaviorIssues: false,
         userId: user.id,
       },
     })
 
-    // 4. Salva a reserva com o preço calculado e status PENDENTE
+    const finalCheckIn = new Date(`${dados.checkInDate}T${dados.checkInTime}:00`)
+    const finalCheckOut = new Date(`${dados.checkOutDate}T${dados.checkOutTime}:00`)
+
     const booking = await prisma.booking.create({
       data: {
-        checkIn: new Date(checkIn + 'T00:00:00'),
-        checkOut: new Date(checkOut + 'T00:00:00'),
+        checkIn: finalCheckIn,
+        checkOut: finalCheckOut,
         totalPrice,
+        petsCount: dados.petsCount, // Salvando a quantidade no banco
         userId: user.id,
         petId: pet.id,
         status: 'PENDENTE',
@@ -90,5 +101,33 @@ export async function criarReserva(formData: FormData) {
   } catch (error) {
     console.error(error)
     return { success: false, error: 'Erro ao salvar no banco de dados.' }
+  }
+}
+
+// --- FUNÇÕES DO PAINEL ADMIN ---
+export async function criarRegra(formData: FormData) {
+  const name = formData.get('name') as string
+  const startDate = formData.get('startDate') as string
+  const endDate = formData.get('endDate') as string
+  const price = Number(formData.get('price'))
+
+  try {
+    await prisma.pricingRule.create({
+      data: { name, startDate: new Date(startDate + 'T00:00:00'), endDate: new Date(endDate + 'T00:00:00'), price },
+    })
+    revalidatePath('/admin') 
+    return { success: true }
+  } catch (error) {
+    console.error(error)
+    return { success: false, error: 'Erro ao criar regra' }
+  }
+}
+
+export async function deletarRegra(id: string) {
+  try {
+    await prisma.pricingRule.delete({ where: { id } })
+    revalidatePath('/admin')
+  } catch (error) {
+    console.error(error)
   }
 }

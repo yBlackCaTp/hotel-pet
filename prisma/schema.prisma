@@ -39,6 +39,7 @@ model Booking {
   checkIn       DateTime
   checkOut      DateTime
   totalPrice    Float    
+  petsCount     Int      @default(1)
   status        String   @default("PENDENTE") 
   
   userId        String
@@ -47,4 +48,13 @@ model Booking {
   pet           Pet      @relation(fields: [petId], references: [id])
   
   createdAt     DateTime @default(now())
+}
+// Tabela para a Regra Suprema (Ajustes Manuais de Preço)
+model PricingRule {
+  id        String   @id @default(cuid())
+  name      String   // Ex: "Alta Temporada Fim de Ano"
+  startDate DateTime // Data de início da regra
+  endDate   DateTime // Data de fim da regra
+  price     Float    // O preço supremo (Ex: 100)
+  createdAt DateTime @default(now())
 }

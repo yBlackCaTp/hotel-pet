@@ -1,103 +1,164 @@
 // app/admin/page.tsx
 import { prisma } from '@/lib/prisma'
+import { criarRegra, deletarRegra } from '@/app/actions'
 
-// Forçamos o Next.js a sempre buscar dados novos ao acessar essa página
 export const dynamic = 'force-dynamic'
 
 export default async function AdminPanel() {
-  // Busca todas as reservas no banco, incluindo os dados do tutor (user) e do pet
+  // Busca as reservas
   const reservas = await prisma.booking.findMany({
-    include: {
-      user: true,
-      pet: true,
-    },
-    orderBy: {
-      createdAt: 'desc', // Mostra as mais recentes primeiro
-    },
+    include: { user: true, pet: true },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  // Busca as regras de preço ativas
+  const regras = await prisma.pricingRule.findMany({
+    orderBy: { startDate: 'asc' }
   })
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-6xl mx-auto space-y-12">
         
-        {/* Cabeçalho do Painel */}
-        <header className="flex justify-between items-center mb-8 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Painel de Gestão</h1>
-            <p className="text-gray-500 text-sm mt-1">Gerencie as reservas do seu Hotel Pet</p>
-          </div>
-          <div className="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg font-semibold text-sm border border-indigo-100">
-            {reservas.length} Reservas Totais
-          </div>
-        </header>
+        {/* --- SEÇÃO 1: RESERVAS --- */}
+        <section>
+          <header className="flex justify-between items-center mb-6 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Painel de Gestão</h1>
+              <p className="text-gray-500 text-sm mt-1">Gerencie as reservas do seu Hotel Pet</p>
+            </div>
+            <div className="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg font-semibold text-sm border border-indigo-100">
+              {reservas.length} Reservas Totais
+            </div>
+          </header>
 
-        {/* Tabela de Reservas */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-gray-600">
-              <thead className="bg-gray-50 text-gray-700 uppercase font-semibold text-xs border-b border-gray-100">
-                <tr>
-                  <th className="px-6 py-4">Tutor</th>
-                  <th className="px-6 py-4">Pet (Porte)</th>
-                  <th className="px-6 py-4">Check-in / Check-out</th>
-                  <th className="px-6 py-4">Valor</th>
-                  <th className="px-6 py-4">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {reservas.length === 0 ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-gray-600">
+                <thead className="bg-gray-50 text-gray-700 uppercase font-semibold text-xs border-b border-gray-100">
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                      Nenhuma reserva encontrada ainda.
-                    </td>
+                    <th className="px-6 py-4">Tutor</th>
+                    <th className="px-6 py-4">Pet (Porte)</th>
+                    <th className="px-6 py-4">Datas</th>
+                    <th className="px-6 py-4">Valor</th>
+                    <th className="px-6 py-4">Status</th>
                   </tr>
-                ) : (
-                  reservas.map((reserva: any) => (
-                    <tr key={reserva.id} className="hover:bg-gray-50 transition-colors">
-                      {/* Dados do Tutor */}
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-gray-900">{reserva.user.name}</div>
-                        <div className="text-xs text-gray-500">{reserva.user.email}</div>
-                      </td>
-                      
-                      {/* Dados do Pet */}
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-gray-900">{reserva.pet.name}</div>
-                        <div className="text-xs text-gray-500">{reserva.pet.size}</div>
-                      </td>
-                      
-                      {/* Datas */}
-                      <td className="px-6 py-4">
-                        <div>
-                          <span className="font-medium">In:</span> {reserva.checkIn.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                        </div>
-                        <div>
-                          <span className="font-medium">Out:</span> {reserva.checkOut.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                        </div>
-                      </td>
-                      
-                      {/* Valor */}
-                      <td className="px-6 py-4 font-medium text-gray-900">
-                        R$ {reserva.totalPrice.toFixed(2)}
-                      </td>
-                      
-                      {/* Status */}
-                      <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          reserva.status === 'CONFIRMADA' 
-                            ? 'bg-green-100 text-green-700' 
-                            : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {reserva.status}
-                        </span>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {reservas.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                        Nenhuma reserva encontrada ainda.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    reservas.map((reserva: any) => (
+                      <tr key={reserva.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-gray-900">{reserva.user.name}</div>
+                          <div className="text-xs text-gray-500">{reserva.user.email}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-gray-900">{reserva.pet.name}</div>
+                          <div className="text-xs text-gray-500">{reserva.pet.size}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div><span className="font-medium">In:</span> {reserva.checkIn.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</div>
+                          <div><span className="font-medium">Out:</span> {reserva.checkOut.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</div>
+                        </td>
+                        <td className="px-6 py-4 font-medium text-gray-900">
+                          R$ {reserva.totalPrice.toFixed(2)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                            reserva.status === 'CONFIRMADA' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {reserva.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </section>
+
+        {/* --- SEÇÃO 2: MOTOR DE PREÇOS (REGRA 3) --- */}
+        <section>
+          <div className="mb-6">
+            <h2 className="text-xl font-bold text-gray-900">Preços Dinâmicos (Regra Suprema)</h2>
+            <p className="text-gray-500 text-sm">Defina preços especiais para alta temporada. Estas regras substituem o valor padrão.</p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            
+            {/* Formulário de Nova Regra */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 self-start">
+              <h3 className="font-bold text-gray-800 mb-4">Adicionar Nova Regra</h3>
+              <form action={criarRegra} className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase">Nome da Temporada</label>
+                  <input required name="name" type="text" placeholder="Ex: Réveillon 2024" className="w-full mt-1 rounded-lg border-gray-200 p-2.5 text-sm focus:ring-indigo-600 focus:border-indigo-600 border" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase">Início</label>
+                    <input required name="startDate" type="date" className="w-full mt-1 rounded-lg border-gray-200 p-2.5 text-sm border" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase">Fim</label>
+                    <input required name="endDate" type="date" className="w-full mt-1 rounded-lg border-gray-200 p-2.5 text-sm border" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase">Preço da Diária (R$)</label>
+                  <input required name="price" type="number" step="0.01" placeholder="100" className="w-full mt-1 rounded-lg border-gray-200 p-2.5 text-sm border" />
+                </div>
+                <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition-colors">
+                  Ativar Regra
+                </button>
+              </form>
+            </div>
+
+            {/* Lista de Regras Ativas */}
+            <div className="md:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h3 className="font-bold text-gray-800 mb-4">Regras Ativas no Sistema</h3>
+              
+              <div className="space-y-3">
+                {regras.length === 0 ? (
+                  <p className="text-gray-500 text-sm italic">Nenhuma regra especial cadastrada. O sistema está a usar os preços padrão (R$ 60 / R$ 80).</p>
+                ) : (
+                  regras.map((regra) => {
+                    // O Next.js exige vincular o ID para usar em Server Actions dentro de mapas
+                    const deletarComId = deletarRegra.bind(null, regra.id)
+                    
+                    return (
+                      <div key={regra.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                        <div>
+                          <div className="font-bold text-gray-900">{regra.name}</div>
+                          <div className="text-sm text-gray-600">
+                            De {regra.startDate.toLocaleDateString('pt-BR', { timeZone: 'UTC' })} a {regra.endDate.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="font-black text-indigo-700 text-lg">R$ {regra.price}</span>
+                          <form action={deletarComId}>
+                            <button type="submit" className="text-red-500 hover:text-red-700 text-sm font-bold bg-red-50 px-3 py-1.5 rounded-lg transition-colors">
+                              Excluir
+                            </button>
+                          </form>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+
+          </div>
+        </section>
 
       </div>
     </div>
