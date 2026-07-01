@@ -90,7 +90,6 @@ export async function criarReserva(dados: {
         checkIn: finalCheckIn,
         checkOut: finalCheckOut,
         totalPrice,
-        // A linha "petsCount" foi removida daqui para não dar erro na Vercel!
         userId: user.id,
         petId: pet.id,
         status: 'PENDENTE',
@@ -116,10 +115,9 @@ export async function criarRegra(formData: FormData) {
       data: { name, startDate: new Date(startDate + 'T00:00:00'), endDate: new Date(endDate + 'T00:00:00'), price },
     })
     revalidatePath('/admin') 
-    return { success: true }
+    // Os "returns" foram removidos daqui para respeitar a regra do formulário HTML!
   } catch (error) {
     console.error(error)
-    return { success: false, error: 'Erro ao criar regra' }
   }
 }
 
