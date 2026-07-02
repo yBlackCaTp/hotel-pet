@@ -1,0 +1,205 @@
+// app/actions.ts
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { prisma } from '@/lib/prisma'
+
+const FERIADOS = [
+  '01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '12-25'
+]
+
+function toISODateOnly(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dia}`
+}
+
+async function obterDiasBloqueadosSet(): Promise<Set<string>> {
+  const bloqueios = await prisma.blockedDate.findMany()
+  const dias = new Set<string>()
+
+  for (const bloqueio of bloqueios) {
+    const cursor = new Date(bloqueio.startDate)
+    const fim = new Date(bloqueio.endDate)
+    while (cursor <= fim) {
+      dias.add(toISODateOnly(cursor))
+      cursor.setDate(cursor.getDate() + 1)
+    }
+  }
+
+  return dias
+}
+
+async function calcularPrecoTotal(checkInStr: string, checkOutStr: string, petsCount: number): Promise<number> {
+  const dataEntrada = new Date(checkInStr + 'T00:00:00')
+  const dataSaida = new Date(checkOutStr + 'T00:00:00')
+  
+  const regrasManuais = await prisma.pricingRule.findMany()
+  const diasBloqueados = await obterDiasBloqueadosSet()
+
+  let precoTotal = 0
+  let dataAtual = new Date(dataEntrada)
+
+  while (dataAtual < dataSaida) {
+    const dataFormatadaISO = toISODateOnly(dataAtual)
+
+    if (diasBloqueados.has(dataFormatadaISO)) {
+      const dataLegivel = dataAtual.toLocaleDateString('pt-BR')
+      throw new Error(`A data ${dataLegivel} está indisponível para hospedagem. Escolha outro período.`)
+    }
+
+    const mes = String(dataAtual.getMonth() + 1).padStart(2, '0')
+    const dia = String(dataAtual.getDate()).padStart(2, '0')
+    const dataFormatada = `${mes}-${dia}`
+
+    const regraSuprema = regrasManuais.find(regra => 
+      dataAtual >= regra.startDate && dataAtual <= regra.endDate
+    )
+
+    if (regraSuprema) {
+      precoTotal += regraSuprema.price
+    } else if (FERIADOS.includes(dataFormatada)) {
+      precoTotal += 80
+    } else {
+      precoTotal += 60
+    }
+
+    dataAtual.setDate(dataAtual.getDate() + 1)
+  }
+
+  return precoTotal * petsCount
+}
+
+export async function obterDatasBloqueadas(): Promise<string[]> {
+  const set = await obterDiasBloqueadosSet()
+  return Array.from(set)
+}
+
+export async function obterPrecoPreview(checkInDate: string, checkOutDate: string, petsCount: number) {
+  try {
+    const price = await calcularPrecoTotal(checkInDate, checkOutDate, petsCount)
+    return { success: true, price }
+  } catch (error) {
+    const mensagem = error instanceof Error ? error.message : 'Erro ao calcular o valor das diárias.'
+    return { success: false, price: 0, error: mensagem }
+  }
+}
+
+export async function criarReserva(dados: {
+  name: string
+  email: string
+  pets: { name: string; size: string }[]
+  checkInDate: string
+  checkInTime: string
+  checkOutDate: string
+  checkOutTime: string
+  termosAceitos: boolean
+}) {
+  try {
+    if (!dados.termosAceitos) {
+      return { success: false, error: 'É necessário aceitar o Termo de Responsabilidade.' }
+    }
+
+    const petsCount = dados.pets.length
+    const totalPrice = await calcularPrecoTotal(dados.checkInDate, dados.checkOutDate, petsCount)
+
+    const user = await prisma.user.upsert({
+      where: { email: dados.email },
+      update: { name: dados.name },
+      create: { name: dados.name, email: dados.email },
+    })
+
+    const nomesPetsCombinados = dados.pets.map(p => p.name).join(' & ')
+    const portesPetsCombinados = dados.pets.map(p => p.size).join(', ')
+
+    const pet = await prisma.pet.create({
+      data: {
+        name: nomesPetsCombinados,
+        breed: petsCount > 1 ? 'Múltiplos' : 'Ignorado no MVP',
+        size: portesPetsCombinados,
+        isCastrated: true,
+        hasBehaviorIssues: false,
+        userId: user.id,
+      },
+    })
+
+    const finalCheckIn = new Date(`${dados.checkInDate}T${dados.checkInTime}:00`)
+    const finalCheckOut = new Date(`${dados.checkOutDate}T${dados.checkOutTime}:00`)
+
+    const booking = await prisma.booking.create({
+      data: {
+        checkIn: finalCheckIn,
+        checkOut: finalCheckOut,
+        totalPrice,
+        petsCount,
+        userId: user.id,
+        petId: pet.id,
+        status: 'PENDENTE',
+        termosAceitos: true,
+        termosAceitosEm: new Date(),
+      },
+    })
+
+    return { success: true, bookingId: booking.id, price: totalPrice, petName: nomesPetsCombinados }
+  } catch (error) {
+    console.error(error)
+    return { success: false, error: 'Erro ao salvar no banco de dados.' }
+  }
+}
+
+// --- FUNÇÕES DO PAINEL ADMIN ---
+export async function criarRegra(formData: FormData) {
+  const name = formData.get('name') as string
+  const startDate = formData.get('startDate') as string
+  const endDate = formData.get('endDate') as string
+  const price = Number(formData.get('price'))
+
+  try {
+    await prisma.pricingRule.create({
+      data: { name, startDate: new Date(startDate + 'T00:00:00'), endDate: new Date(endDate + 'T00:00:00'), price },
+    })
+    revalidatePath('/admin') 
+    // Os "returns" foram removidos daqui para respeitar a regra do formulário HTML!
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+export async function deletarRegra(id: string) {
+  try {
+    await prisma.pricingRule.delete({ where: { id } })
+    revalidatePath('/admin')
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+// --- BLOQUEIO DE DATAS ---
+export async function criarBloqueio(formData: FormData) {
+  const startDate = formData.get('startDate') as string
+  const endDate = formData.get('endDate') as string
+  const reason = formData.get('reason') as string
+
+  try {
+    await prisma.blockedDate.create({
+      data: {
+        startDate: new Date(startDate + 'T00:00:00'),
+        endDate: new Date(endDate + 'T00:00:00'),
+        reason: reason?.trim() ? reason.trim() : null,
+      },
+    })
+    revalidatePath('/admin')
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+export async function deletarBloqueio(id: string) {
+  try {
+    await prisma.blockedDate.delete({ where: { id } })
+    revalidatePath('/admin')
+  } catch (error) {
+    console.error(error)
+  }
+}

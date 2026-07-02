@@ -1,0 +1,41 @@
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Cãodomínio | Hospedagem VIP para Cães",
+  description:
+    "Hospedagem para cães com acompanhamento em tempo real, rotina de exercícios e muito carinho. Reserve online em minutos.",
+  openGraph: {
+    title: "Cãodomínio | Hospedagem VIP para Cães",
+    description:
+      "O conforto que o seu cão merece: rotina de exercícios, acompanhamento em tempo real e cuidado de verdade.",
+    locale: "pt_BR",
+    type: "website",
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="pt-BR"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
+}
