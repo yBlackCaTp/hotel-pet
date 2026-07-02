@@ -1,5 +1,5 @@
 {
-  "name": "hotel-pet",
+  "name": "caodominio",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,6 +10,7 @@
     "postinstall": "prisma generate" 
   },
   "dependencies": {
+    "@mercadopago/sdk-react": "^1.0.3",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "dotenv": "^17.4.2",
